@@ -169,9 +169,23 @@
 
         // Firebase Global Variables provided by Canvas environment (MANDATORY USE)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+        // --- START OF HARDCODED CONFIGURATION ---
+        // 當部署到 GitHub 或其他非 Canvas 環境時，必須使用硬編碼的配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyAaF0b3-C8v_uaed0XtFKfWC7ElFNrrshc",
+            authDomain: "carforms-dc898.firebaseapp.com",
+            projectId: "carforms-dc898",
+            storageBucket: "carforms-dc898.firebasestorage.app",
+            messagingSenderId: "1098158902069",
+            appId: "1:1098158902069:web:010daaec14bb0a2d051a7c",
+            measurementId: "G-XFH6QW7WZT"
+        };
+        const initialAuthToken = null; // 在非 Canvas 環境中，無法使用 Canvas 提供的 auth token
+        // --- END OF HARDCODED CONFIGURATION ---
+        
+        // 舊有的 Canvas 變數宣告現在被替換或覆蓋
+        // const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
+        
         let app, db, auth;
         let isAuthReady = false; // 追蹤 Firebase 是否準備就緒
 
@@ -208,8 +222,9 @@
         // --- Firebase 初始化與實時監聽 ---
 
         async function initializeFirebase() {
+            // 由於配置已硬編碼，我們假設它存在
             if (Object.keys(firebaseConfig).length === 0) {
-                console.error("Firebase configuration is missing.");
+                 // 儘管已硬編碼，仍保留此錯誤處理以防萬一
                 dbStatusEl.textContent = "資料庫狀態: 錯誤 (缺少配置)";
                 dbStatusEl.classList.replace('bg-green-100', 'bg-red-100');
                 dbStatusEl.classList.replace('text-green-700', 'text-red-700');
@@ -235,12 +250,9 @@
                         // Start listening to the database only after auth is confirmed
                         setupFirestoreListener();
                     } else {
-                        // Attempt sign-in
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
+                        // Attempt sign-in: In non-Canvas environment, we use anonymous sign-in
+                        // The initialAuthToken is null now, so it falls back to signInAnonymously
+                        await signInAnonymously(auth);
                     }
                 });
 
