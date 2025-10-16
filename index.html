@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>國定假日排班抽籤系統</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Lucide Icons (用於視覺美化) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 設定全域字體為 Inter */
+        html { font-family: 'Inter', sans-serif; }
+
+        /* 定義自定義旋轉動畫 */
+        @keyframes spin-lottery {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(1080deg) scale(1.1); }
+            100% { transform: rotate(2160deg) scale(1); }
+        }
+        .animate-lottery-spin {
+            animation: spin-lottery 2s ease-out forwards;
+        }
+
+        /* 自定義滾動條樣式，讓結果區更美觀 */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1; /* slate-300 */
+            border-radius: 10px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; /* slate-400 */
+        }
+        /* 固定表格標頭 */
+        .sticky-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8">
+
+    <div id="app" class="max-w-7xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden">
+        <header class="bg-indigo-600 text-white p-6 sm:p-8">
+            <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">國定假日抽班系統 (個人抽取模式)</h1>
+            <p class="mt-1 text-indigo-200">資料庫已連線，所有班表變動將即時同步。</p>
+        </header>
+
+        <div class="lg:grid lg:grid-cols-3 divide-x divide-gray-200">
+
+            <!-- 左側: 設定與抽班控制項 (佔 1/3 寬度) -->
+            <div class="lg:col-span-1 p-6 sm:p-8">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-6 border-b pb-2">抽班控制台</h2>
+                
+                <div id="db-status" class="mb-4 p-2 text-sm font-medium rounded-lg bg-green-100 text-green-700">
+                    資料庫狀態: 連線中...
+                </div>
+
+                <!-- 1. 班表需求設定區 -->
+                <div class="space-y-4 mb-8 p-4 bg-indigo-50 rounded-xl shadow-inner">
+                    <h3 class="font-bold text-lg text-indigo-700 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-check mr-2"><path d="M21 14V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m15 19 2 2 4-4"/></svg>
+                        班表需求設定
+                    </h3>
+                    <div>
+                        <label for="holiday-year" class="block text-sm font-medium text-gray-700">年度</label>
+                        <input type="number" id="holiday-year" value="2025" min="2024" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2.5 transition duration-150 ease-in-out focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label for="holiday-dates" class="block text-sm font-medium text-gray-700">國定假日日期 (月/日, 逗號分隔)</label>
+                        <textarea id="holiday-dates" rows="2" placeholder="例如: 1/1, 1/2, 1/3" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2.5 transition duration-150 ease-in-out focus:ring-indigo-500 focus:border-indigo-500">1/1, 1/2</textarea>
+                    </div>
+                    <div class="pt-2">
+                        <label for="shift-types" class="block text-sm font-medium text-gray-700">所有要抽取的班別 (逗號分隔)</label>
+                        <input type="text" id="shift-types" value="日班, 夜班" placeholder="例如: 日班, 中班, 夜班" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2.5 transition duration-150 ease-in-out focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- 2. 參與人員名單 (勾選區) -->
+                <h3 class="font-bold text-lg text-gray-700 mb-3 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-2 mr-2"><path d="M14 19a6 6 0 0 0-6-6H4a6 6 0 0 0-6 6"/><circle cx="12" cy="7" r="4"/><path d="M19.07 19a8 8 0 0 0-3.8-6.75"/></svg>
+                    勾選參與人員 (共 <span id="participant-count" class="text-indigo-600 font-extrabold ml-1">0</span> 人)
+                </h3>
+                <div id="personnel-list" class="space-y-2 max-h-40 overflow-y-auto custom-scroll p-3 border rounded-xl bg-white shadow-sm mb-8">
+                    <!-- Checkboxes will be inserted here by JavaScript -->
+                </div>
+                
+                <!-- 3. 個人抽班操作區 -->
+                <div class="p-4 bg-yellow-50 rounded-xl shadow-md border-2 border-yellow-200 space-y-4">
+                    <h3 class="font-bold text-lg text-yellow-800 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hand-metal mr-2"><path d="M18 12.5V10l3.5-3.5a1.86 1.86 0 0 0-2.6-2.6L16 7h-2.5l-.83-1.66A2 2 0 0 0 9 5h-.5A2.5 2.5 0 1 0 5 7.5V17"/><path d="M18 12.5a4 4 0 0 1-4 4H8a2 2 0 0 0-2 2v2"/><path d="M12 21.5v-2"/><path d="M16 21.5v-2"/></svg>
+                        個人抽班操作
+                    </h3>
+                    <div>
+                        <label for="current-drawer" class="block text-sm font-medium text-gray-700">選擇抽班人員</label>
+                        <select id="current-drawer" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm p-2.5 focus:ring-yellow-500 focus:border-yellow-500">
+                            <!-- Options will be populated by JS -->
+                        </select>
+                    </div>
+                    <div class="text-sm font-medium text-gray-700 flex items-center justify-between">
+                        待抽班次總數: 
+                        <span id="available-slots-count" class="text-2xl font-black text-red-600">0</span>
+                    </div>
+
+                    <!-- 抽班按鈕與動畫區 -->
+                    <div class="text-center">
+                        <button id="draw-button" class="w-full relative px-6 py-4 bg-yellow-500 text-white font-extrabold text-xl rounded-xl shadow-lg hover:bg-yellow-600 transition duration-300 ease-in-out transform hover:scale-[1.02] active:scale-[0.98] disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
+                            <!-- 圖示: 抽籤機/轉盤 -->
+                            <div id="lottery-icon" class="w-8 h-8 transition duration-300">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-dices"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="m15.5 8.5 1.5 1.5"/><path d="m10.5 8.5 1.5 1.5"/><path d="m15.5 13.5 1.5 1.5"/><path d="m10.5 13.5 1.5 1.5"/></svg>
+                            </div>
+                            <span id="button-text">抽取可用班次！</span>
+                        </button>
+                        <div id="error-message" class="mt-3 text-red-600 font-semibold hidden text-sm">請確保有人員勾選且有待抽班次！</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 右側: 班表顯示區 (佔 2/3 寬度) -->
+            <div class="lg:col-span-2 p-6 sm:p-8 bg-gray-50">
+                <div class="flex justify-between items-center mb-6 border-b pb-2">
+                    <h2 class="text-2xl font-semibold text-gray-800">抽班結果班表</h2>
+                    <div class="flex space-x-3">
+                         <button id="export-schedule-button" class="text-sm px-4 py-2 bg-green-500 text-white rounded-xl shadow hover:bg-green-600 transition duration-150 ease-in-out font-medium flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text mr-1"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><line x1="10" x2="10" y1="12" y2="17"/><line x1="14" x2="14" y1="12" y2="17"/></svg>
+                            匯出班表 (CSV)
+                        </button>
+                        <button id="clear-schedule-button" class="text-sm px-4 py-2 bg-red-500 text-white rounded-xl shadow hover:bg-red-600 transition duration-150 ease-in-out font-medium flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2 mr-1"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                            清除所有紀錄
+                        </button>
+                    </div>
+                </div>
+                <div id="schedule-container" class="bg-white p-4 rounded-xl shadow-lg custom-scroll max-h-[70vh] overflow-y-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead>
+                            <tr class="bg-gray-50 sticky-header shadow-sm">
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tl-lg w-1/4">日期</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">班別</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider rounded-tr-lg w-1/2">值班人員</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedule-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Results will be displayed here -->
+                            <tr id="empty-message-row">
+                                <td colspan="3" class="px-3 py-4 text-center text-gray-400 italic">
+                                    資料庫連線中，請稍候...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, getDocs, deleteDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Global Variables provided by Canvas environment (MANDATORY USE)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+        let isAuthReady = false; // 追蹤 Firebase 是否準備就緒
+
+        // --- 核心資料與變數 ---
+        const ALL_PERSONNEL = [
+            '賴冠汝', '林欣怡', '甘婉霏', '李文雄', '林芬萍', '方勇得', 
+            '徐詣勛', '丁冠博', '邱婷瑩', '甘芷芸', '黃惠琳', '周琦崴', 
+            '賴俊穎', '黃鈺珊', '黃乙玲', '鄭宛淇'
+        ];
+        
+        let schedule = []; // 班表資料現在由 Firestore 實時監聽器填充
+
+        // --- DOM 元素快取 ---
+        const personnelListEl = document.getElementById('personnel-list');
+        const participantCountEl = document.getElementById('participant-count');
+        const drawButtonEl = document.getElementById('draw-button');
+        const lotteryIconEl = document.getElementById('lottery-icon');
+        const buttonTextEl = document.getElementById('button-text');
+        const errorMessageEl = document.getElementById('error-message');
+        const scheduleBodyEl = document.getElementById('schedule-body');
+        const clearScheduleButtonEl = document.getElementById('clear-schedule-button');
+        const exportScheduleButtonEl = document.getElementById('export-schedule-button');
+        const currentDrawerEl = document.getElementById('current-drawer');
+        const availableSlotsCountEl = document.getElementById('available-slots-count');
+        const dbStatusEl = document.getElementById('db-status');
+
+
+        const dateInputs = {
+            year: document.getElementById('holiday-year'),
+            dates: document.getElementById('holiday-dates'),
+            shifts: document.getElementById('shift-types')
+        };
+
+        // --- Firebase 初始化與實時監聽 ---
+
+        async function initializeFirebase() {
+            if (Object.keys(firebaseConfig).length === 0) {
+                console.error("Firebase configuration is missing.");
+                dbStatusEl.textContent = "資料庫狀態: 錯誤 (缺少配置)";
+                dbStatusEl.classList.replace('bg-green-100', 'bg-red-100');
+                dbStatusEl.classList.replace('text-green-700', 'text-red-700');
+                return;
+            }
+
+            try {
+                // Set Firestore log level to Debug (Recommended for Canvas)
+                setLogLevel('Debug');
+                
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Authentication
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        // User is signed in.
+                        isAuthReady = true;
+                        dbStatusEl.textContent = "資料庫狀態: 連線成功 (同步中)";
+                        dbStatusEl.classList.replace('bg-green-100', 'bg-lime-100');
+                        dbStatusEl.classList.replace('text-green-700', 'text-lime-700');
+                        // Start listening to the database only after auth is confirmed
+                        setupFirestoreListener();
+                    } else {
+                        // Attempt sign-in
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                });
+
+                // Set up handlers that rely on data changes
+                dateInputs.dates.addEventListener('input', renderAvailableSlotsCount);
+                dateInputs.shifts.addEventListener('input', renderAvailableSlotsCount);
+
+            } catch (error) {
+                console.error("Firebase initialization or authentication failed:", error);
+                dbStatusEl.textContent = "資料庫狀態: 錯誤 (連線失敗)";
+                dbStatusEl.classList.replace('bg-green-100', 'bg-red-100');
+                dbStatusEl.classList.replace('text-green-700', 'text-red-700');
+                showResultMessageBox('系統錯誤', 'Firebase 初始化失敗，資料無法同步。', 'alert', 'red');
+            }
+        }
+
+        // Collection path for public/collaborative data
+        const getScheduleCollectionRef = () => {
+            // 使用公共路徑: /artifacts/{appId}/public/data/{collectionName}
+            return collection(db, `artifacts/${appId}/public/data/shift_schedules`);
+        };
+
+        // --- Real-time data listener ---
+        function setupFirestoreListener() {
+            if (!db) return; // Ensure DB is initialized
+
+            const q = getScheduleCollectionRef(); 
+            
+            // onSnapshot 提供實時更新
+            onSnapshot(q, (snapshot) => {
+                const newSchedule = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // 添加 Firestore document ID 以便刪除
+                    newSchedule.push({ ...data, docId: doc.id });
+                });
+                
+                // 更新 local schedule array，並按 ID (時間戳) 降序排列 (最新在最上)
+                schedule = newSchedule.sort((a, b) => b.id - a.id);
+                
+                // 渲染 UI
+                renderSchedule();
+                renderAvailableSlotsCount();
+            }, (error) => {
+                console.error("Error listening to Firestore changes:", error);
+                showResultMessageBox('資料同步錯誤', '無法同步班表資料，請刷新頁面。', 'alert', 'red');
+            });
+        }
+        
+        /**
+         * 新增一筆抽班紀錄到 Firestore
+         */
+        async function addScheduleEntry(newEntry) {
+            if (!isAuthReady || !db) return;
+            try {
+                // addDoc 會自動生成 document ID
+                await addDoc(getScheduleCollectionRef(), newEntry);
+                // UI 將由 onSnapshot 更新
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                showResultMessageBox('資料寫入失敗', '無法儲存抽班結果，請檢查連線。', 'alert', 'red');
+            }
+        }
+
+        // --- 輔助函數：解析輸入字串並清理 ---
+        function parseInputString(inputString) {
+            if (!inputString) return [];
+            return inputString
+                .split(',')
+                .map(item => item.trim())
+                .filter(item => item.length > 0);
+        }
+        
+        // --- 步驟 1: 初始化人員清單與勾選狀態及抽班選單 ---
+        function initializePersonnelList() {
+            personnelListEl.innerHTML = ''; // 清空清單
+            currentDrawerEl.innerHTML = '<option value="" disabled selected>-- 請選擇抽班人員 --</option>'; // 清空選單
+
+            ALL_PERSONNEL.forEach(name => {
+                // 創建勾選框
+                const div = document.createElement('div');
+                div.className = 'flex items-center hover:bg-gray-100 p-1 rounded-md';
+                div.innerHTML = `
+                    <input id="person-${name}" type="checkbox" value="${name}" checked class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <label for="person-${name}" class="ml-3 block text-sm font-medium text-gray-700 cursor-pointer w-full">${name}</label>
+                `;
+                personnelListEl.appendChild(div);
+
+                // 創建抽班選單選項
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                currentDrawerEl.appendChild(option);
+            });
+
+            // 添加事件監聽器來更新計數
+            personnelListEl.addEventListener('change', updateParticipantCount);
+            currentDrawerEl.addEventListener('change', renderAvailableSlotsCount);
+
+            updateParticipantCount(); // 初次載入時更新計數
+        }
+
+        function updateParticipantCount() {
+            const checkedCount = personnelListEl.querySelectorAll('input:checked').length;
+            participantCountEl.textContent = checkedCount;
+            // 按鈕狀態由 renderAvailableSlotsCount 統一管理
+        }
+        
+        /**
+         * 計算並返回所有尚未被排班的 {date, shift} 組合
+         * @returns {Array<{date: string, shift: string}>}
+         */
+        function getUnassignedSlots() {
+            const year = dateInputs.year.value;
+            const dates = parseInputString(dateInputs.dates.value);
+            const shifts = parseInputString(dateInputs.shifts.value);
+            let allSlots = [];
+
+            if (!year || dates.length === 0 || shifts.length === 0) return [];
+
+            // 1. 生成所有應有的 slots
+            dates.forEach(dateStr => {
+                const fullDate = `${year}/${dateStr.replace('-', '/')}`;
+                shifts.forEach(shift => {
+                    allSlots.push({ date: fullDate, shift: shift });
+                });
+            });
+
+            // 2. 篩選掉已被排班的 slots
+            const assignedKeys = new Set(schedule.map(entry => `${entry.date}-${entry.shift}`));
+            
+            const unassignedSlots = allSlots.filter(slot => {
+                return !assignedKeys.has(`${slot.date}-${slot.shift}`);
+            });
+
+            return unassignedSlots;
+        }
+
+        function renderAvailableSlotsCount() {
+            const unassignedSlots = getUnassignedSlots();
+            const checkedCount = personnelListEl.querySelectorAll('input:checked').length;
+            const isDrawerSelected = currentDrawerEl.value !== "";
+
+            availableSlotsCountEl.textContent = unassignedSlots.length;
+
+            // 根據是否有可用班次、是否有人員勾選和是否選擇抽班人員來決定按鈕狀態
+            if (unassignedSlots.length === 0 || checkedCount === 0 || !isDrawerSelected || !isAuthReady) {
+                drawButtonEl.disabled = true;
+                errorMessageEl.classList.remove('hidden');
+                errorMessageEl.textContent = !isAuthReady ? 
+                    '資料庫連線中，請稍候...' :
+                    (unassignedSlots.length === 0 ? 
+                    '所有班次已抽完！' : 
+                    '請勾選參與人員或選擇抽班人員！');
+            } else {
+                drawButtonEl.disabled = false;
+                errorMessageEl.classList.add('hidden');
+            }
+        }
+
+
+        // --- 步驟 2: 個人抽班邏輯 ---
+        drawButtonEl.addEventListener('click', () => {
+            const drawerName = currentDrawerEl.value;
+            const unassignedSlots = getUnassignedSlots();
+            
+            if (!drawerName || unassignedSlots.length === 0 || !isAuthReady) {
+                renderAvailableSlotsCount(); 
+                return;
+            }
+
+            // 1. 檢查「一人一天只能抽一個班」的限制
+            const availableSlotsForDrawer = unassignedSlots.filter(slot => {
+                const dateOnly = slot.date;
+                // 檢查此人是否已在 schedule 中佔用同一天的任何班次
+                const alreadyAssignedOnDate = schedule.some(entry => 
+                    entry.winner === drawerName && entry.date === dateOnly
+                );
+                // 必須是參與人員且當天未排班
+                const isParticipant = personnelListEl.querySelector(`input[value="${drawerName}"]:checked`);
+                
+                return isParticipant && !alreadyAssignedOnDate;
+            });
+
+            if (availableSlotsForDrawer.length === 0) {
+                showResultMessageBox('無可用班次', `抱歉，**${drawerName}** 在所有未抽取的日期中，皆已排有值班。`, 'alert', 'red');
+                return;
+            }
+
+            // 2. 從符合條件的班次中隨機抽取一個
+            const randomIndex = Math.floor(Math.random() * availableSlotsForDrawer.length);
+            const drawnSlot = availableSlotsForDrawer[randomIndex];
+
+            // 禁用按鈕並啟動動畫
+            drawButtonEl.disabled = true;
+            buttonTextEl.textContent = `抽籤中...`;
+            lotteryIconEl.classList.add('animate-lottery-spin');
+
+            // 模擬抽籤延遲 (2秒動畫時間)
+            setTimeout(() => {
+                
+                // 3. 儲存結果 (使用 Firestore 寫入)
+                const newEntry = {
+                    id: Date.now() + Math.random(), // 使用時間戳+隨機數作為唯一排序 ID
+                    date: drawnSlot.date,
+                    shift: drawnSlot.shift,
+                    winner: drawerName,
+                    timestamp: new Date().toLocaleTimeString('zh-TW', { hour12: false })
+                };
+                addScheduleEntry(newEntry);
+
+                // 停止動畫
+                lotteryIconEl.classList.remove('animate-lottery-spin');
+                drawButtonEl.disabled = false;
+                buttonTextEl.textContent = '抽取可用班次！';
+
+                // 4. 顯示結果 (UI 將由 onSnapshot 自動更新)
+                showResultMessageBox('中籤結果！', `恭喜 **${drawerName}** 抽中：<br>日期：**${drawnSlot.date}**<br>班別：**${drawnSlot.shift}**`, 'success', 'green');
+                
+            }, 2000); // 2秒
+        });
+
+        // --- 步驟 3: 結果顯示 (班表) ---
+        function renderSchedule() {
+            if (schedule.length === 0) {
+                scheduleBodyEl.innerHTML = `
+                    <tr id="empty-message-row">
+                        <td colspan="3" class="px-3 py-4 text-center text-gray-400 italic">
+                            ${isAuthReady ? '尚無抽班紀錄。請在左側設定並進行抽班。' : '資料庫連線中，請稍候...'}
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // 清除舊內容
+            scheduleBodyEl.innerHTML = ''; 
+
+            schedule.forEach((entry, index) => {
+                const tr = document.createElement('tr');
+                tr.className = index % 2 === 0 ? 'bg-white hover:bg-gray-50 transition duration-150' : 'bg-gray-50 hover:bg-gray-100 transition duration-150';
+
+                tr.innerHTML = `
+                    <td class="px-3 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">${entry.date}</td>
+                    <td class="px-3 py-3 text-sm text-gray-500 whitespace-nowrap">${entry.shift}</td>
+                    <td class="px-3 py-3 text-lg font-extrabold text-indigo-600 whitespace-nowrap">
+                        <span class="p-1 rounded-full bg-indigo-100">${entry.winner}</span>
+                        <span class="ml-2 text-xs text-gray-400 hidden sm:inline">(${entry.timestamp})</span>
+                    </td>
+                `;
+                scheduleBodyEl.appendChild(tr);
+            });
+        }
+        
+        // --- 步驟 4: 清除班表功能 (使用 Firestore 刪除) ---
+        clearScheduleButtonEl.addEventListener('click', () => {
+            showConfirmDialog('確認清除紀錄', '您確定要清除所有抽班紀錄嗎？此操作無法復原。所有連線裝置的資料都會被清除。', async () => {
+                if (!isAuthReady || !db) {
+                    showResultMessageBox('錯誤', '資料庫尚未準備好。', 'alert', 'red');
+                    return;
+                }
+                
+                const q = getScheduleCollectionRef();
+                try {
+                    // 獲取所有文件
+                    const querySnapshot = await getDocs(q);
+                    
+                    // 批量刪除所有文件
+                    let deletePromises = [];
+                    querySnapshot.forEach((doc) => {
+                        // 使用 doc.ref 進行刪除
+                        deletePromises.push(deleteDoc(doc.ref));
+                    });
+                    
+                    await Promise.all(deletePromises);
+                    
+                    // UI 會通過 onSnapshot 自動更新
+                    const backdrop = document.getElementById('modal-backdrop');
+                    if(backdrop) backdrop.remove();
+                    showResultMessageBox('清除成功', '所有抽班紀錄已清除並同步。', 'success', 'green');
+
+                } catch (e) {
+                    console.error("Error clearing documents: ", e);
+                    showResultMessageBox('清除失敗', '清除資料時發生錯誤。', 'alert', 'red');
+                }
+            });
+        });
+
+        // --- 步驟 5: 匯出 Excel (CSV) 功能 ---
+        exportScheduleButtonEl.addEventListener('click', handleExport);
+
+        function handleExport() {
+            if (schedule.length === 0) {
+                showResultMessageBox('匯出失敗', '班表無任何資料，無法匯出。', 'alert', 'red');
+                return;
+            }
+
+            // 1. 取得所有不重複的日期 (作為欄位)
+            const uniqueDates = Array.from(new Set(schedule.map(entry => entry.date))).sort();
+            
+            // 2. 建立樞紐矩陣 (Pivot Matrix)
+            const pivot = {}; 
+            // 匯出只包含有勾選的參與人員
+            const allNames = ALL_PERSONNEL.filter(name => personnelListEl.querySelector(`input[value="${name}"]:checked`));
+
+            // 初始化矩陣
+            allNames.forEach(name => {
+                pivot[name] = {};
+                uniqueDates.forEach(date => {
+                    pivot[name][date] = ''; // 預設為空
+                });
+            });
+
+            // 填充數據
+            schedule.forEach(entry => {
+                if (pivot[entry.winner]) {
+                     pivot[entry.winner][entry.date] = entry.shift;
+                }
+            });
+
+            // 3. 建立 CSV 內容
+            let csvContent = "姓名," + uniqueDates.join(",") + "\n";
+
+            allNames.forEach(name => {
+                let row = [name];
+                uniqueDates.forEach(date => {
+                    row.push(`"${pivot[name][date] || ''}"`); 
+                });
+                csvContent += row.join(",") + "\n";
+            });
+
+            // 4. 下載 CSV 檔案 (處理中文亂碼)
+            const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', '國定假日班表_' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            showResultMessageBox('匯出成功', '班表已成功匯出為 CSV 檔案！', 'success', 'green');
+        }
+
+
+        // --- 步驟 6: 訊息/確認對話框 (互動感) ---
+
+        /**
+         * 顯示自定義訊息框
+         */
+        function showResultMessageBox(title, message, type = 'success', color = 'green') {
+            const iconConfig = {
+                success: { color: '#10b981', bg: 'bg-green-100', svg: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>' },
+                alert: { color: '#ef4444', bg: 'bg-red-100', svg: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h18.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/>' }
+            };
+            const config = iconConfig[type];
+
+            const htmlContent = `
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity duration-300" id="modal-backdrop">
+                    <div class="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-11/12 max-w-sm transform scale-95 transition-all duration-300 ease-out">
+                        <div class="text-center">
+                            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full ${config.bg} mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${config.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-icon">${config.svg}</svg>
+                            </div>
+                            <h3 class="text-2xl font-extrabold text-${color}-600 mb-2">${title}</h3>
+                            <p class="text-gray-700 font-medium mb-4">${message}</p>
+                        </div>
+                        <div class="mt-6">
+                            <button onclick="document.getElementById('modal-backdrop').remove()" class="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none transition duration-150">
+                                確認
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', htmlContent);
+        }
+
+        function showConfirmDialog(title, message, onConfirm) {
+            const htmlContent = `
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 transition-opacity duration-300" id="modal-backdrop">
+                    <div class="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-11/12 max-w-sm transform scale-95 transition-all duration-300 ease-out">
+                        <div class="text-center">
+                            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-3">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-triangle"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h18.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                            </div>
+                            <h3 class="text-lg font-extrabold text-gray-900 mb-1">${title}</h3>
+                            <p class="text-sm text-gray-500">${message}</p>
+                        </div>
+                        <div class="mt-6 flex justify-end space-x-3">
+                            <button onclick="document.getElementById('modal-backdrop').remove()" class="inline-flex justify-center rounded-xl border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none transition duration-150">
+                                取消
+                            </button>
+                            <button id="confirm-action-button" class="inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none transition duration-150">
+                                確認清除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', htmlContent);
+            document.getElementById('confirm-action-button').addEventListener('click', onConfirm);
+        }
+
+
+        // --- 啟動函式 ---
+        window.onload = function() {
+            dateInputs.year.value = new Date().getFullYear();
+            initializePersonnelList(); 
+            // 啟動 Firebase 連線，連線成功後才會開始監聽並渲染班表
+            initializeFirebase(); 
+        };
+
+    </script>
+</body>
+</html>
